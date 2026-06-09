@@ -50,6 +50,37 @@ import { docxToDtir } from '@shuji-bonji/dtir-ooxml-reader-mcp/reader';
 const dtir = await docxToDtir(buf, { fileName: 'x.docx', targetLang: 'en-GB' });
 ```
 
+## MCP サーバとして接続
+
+ビルド（polyrepo: **build 時だけ** `doc-translation-ir` を隣に置く。型のみ依存なので**実行時は不要**）:
+
+```sh
+git clone https://github.com/shuji-bonji/doc-translation-ir.git
+git clone https://github.com/shuji-bonji/dtir-ooxml-reader-mcp.git
+cd dtir-ooxml-reader-mcp && npm install && npm run build   # → dist/index.js
+```
+
+### Claude Desktop（`claude_desktop_config.json`）
+
+```jsonc
+{
+  "mcpServers": {
+    "dtir-ooxml-reader": {
+      "command": "node",
+      "args": ["/ABS/PATH/dtir-ooxml-reader-mcp/dist/index.js"]
+    }
+  }
+}
+```
+
+### Claude Code
+
+```sh
+claude mcp add dtir-ooxml-reader -- node /ABS/PATH/dtir-ooxml-reader-mcp/dist/index.js
+```
+
+提供ツール: **`docx_to_dtir`**（base64 docx → DTIR）
+
 ## テスト
 
 - `npm test` — vitest（主要不変条件）
@@ -58,6 +89,5 @@ const dtir = await docxToDtir(buf, { fileName: 'x.docx', targetLang: 'en-GB' });
 
 ## PoC の注意
 
-- DTIR 型は `src/dtir.ts` にローカル複製（正本は `doc-translation-ir`）。将来 `@shuji-bonji/doc-translation-ir`
-  への依存に置換。出力は JSON Schema で検証するためドリフトは検出される。
+- DTIR 型は `@shuji-bonji/doc-translation-ir` に依存（共有契約）。出力は JSON Schema でも検証するためドリフトは検出される。
 - v0.1 の既知の制限（段落内言語切替・インライン書式 collapse）は DTIR README §8 を参照。
