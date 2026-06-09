@@ -10,20 +10,19 @@
  * 実行: tsx test/run-fixture.ts
  */
 import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { docxToDtir } from '../src/reader.js';
 import { detectScripts } from '../src/lang.js';
-import { validateDtir } from '../../doc-translation-ir/tools/validate-dtir.js';
+import { validateDtir } from '@shuji-bonji/doc-translation-ir/validate';
+import {
+  fixtureDocxPath,
+  fixtureGroundtruthPath,
+  schemaPath,
+} from '@shuji-bonji/doc-translation-ir/fixtures';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(here, '..', '..');
-const irRoot = resolve(repoRoot, 'doc-translation-ir');
-const fixtureDocx = resolve(irRoot, 'fixtures/docx/mixed-nl-fr-de-tricky.docx');
-const groundtruthPath = `${fixtureDocx}.groundtruth.json`;
-const schemaPath = resolve(irRoot, 'schema/dtir-0.1.schema.json');
+const fixtureDocx = fixtureDocxPath;
+const groundtruthPath = fixtureGroundtruthPath;
 
 const RED = (s: string) => `\x1b[31m${s}\x1b[0m`;
 const GREEN = (s: string) => `\x1b[32m${s}\x1b[0m`;

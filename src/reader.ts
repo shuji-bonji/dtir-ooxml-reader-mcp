@@ -18,7 +18,7 @@ import type {
   SegmentLanguage,
   SegmentRole,
   SegmentRun,
-} from './dtir.js';
+} from '@shuji-bonji/doc-translation-ir';
 
 const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;

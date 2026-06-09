@@ -3,17 +3,10 @@
  * 詳細な groundtruth 照合は test/run-fixture.ts（npm run test:fixture）。
  */
 import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { docxToDtir } from '../src/reader.js';
-import { validateDtir } from '../../doc-translation-ir/tools/validate-dtir.js';
-
-const here = dirname(fileURLToPath(import.meta.url));
-const fixture = resolve(
-  here,
-  '../../doc-translation-ir/fixtures/docx/mixed-nl-fr-de-tricky.docx',
-);
+import { validateDtir } from '@shuji-bonji/doc-translation-ir/validate';
+import { fixtureDocxPath as fixture } from '@shuji-bonji/doc-translation-ir/fixtures';
 
 describe('docxToDtir', () => {
   it('produces a semantically valid multilingual DTIR', async () => {

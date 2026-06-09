@@ -9,7 +9,7 @@
  *   4. 数値・記号のみ → 非言語、language=null（翻訳対象外）
  */
 import { detectAll } from 'tinyld';
-import type { LanguageCandidate, SegmentLanguage } from './dtir.js';
+import type { LanguageCandidate, SegmentLanguage } from '@shuji-bonji/doc-translation-ir';
 
 /**
  * 言語判定は tinyld（純JS）。franc は短文で誤判定が多い
