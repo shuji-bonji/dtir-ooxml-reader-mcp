@@ -57,7 +57,7 @@ const dtir = await docxToDtir(buf, { fileName: 'x.docx', targetLang: 'en-GB' });
 ```sh
 git clone https://github.com/shuji-bonji/doc-translation-ir.git
 git clone https://github.com/shuji-bonji/dtir-ooxml-reader-mcp.git
-cd dtir-ooxml-reader-mcp && npm install && npm run build   # → dist/index.js
+cd dtir-ooxml-reader-mcp && npm install   # prepare で自動ビルド → dist/index.js（再ビルドは npm run build）
 ```
 
 ### Claude Desktop（`claude_desktop_config.json`）
