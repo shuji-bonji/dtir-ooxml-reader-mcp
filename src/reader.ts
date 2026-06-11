@@ -26,9 +26,7 @@ const TEXT_NODE = 3;
 interface PartSpec {
   /** zip 内パス（例: word/document.xml）。 */
   part: string;
-  /** ルート直下のパラグラフ容器タグ。 */
-  container: 'w:body' | 'w:hdr' | 'w:ftr';
-  /** 既定 role（header/footer は part が role を決める）。 */
+  /** 既定 role（header/footer/footnote/endnote は part が role を決める）。 */
   baseRole: SegmentRole | null;
 }
 
@@ -101,6 +99,64 @@ function extractRun(r: El): RunInfo {
   };
 }
 
+// --- 再帰走査（v0.2） -------------------------------------------------------
+// reader は「<w:t> を持つ段落(w:p)」を、容器直下に限らず**どの入れ子からも**拾う。
+// 表(w:tbl/w:tr/w:tc)・SDT・テキストボックス内の段落、脚注/文末脚注パートを網羅する。
+
+interface ParaHit {
+  /** 対象段落。 */
+  p: El;
+  /** part ルート（documentElement）からの構造パス。例 /w:body[1]/w:tbl[1]/w:tr[2]/w:tc[1]/w:p[1] */
+  path: string;
+  /** 表セル内か（role=table-cell の判定に使う）。 */
+  inTableCell: boolean;
+}
+
+/**
+ * documentElement 起点で w:p を再帰収集する。各要素には**同名兄弟内の1始まり連番**を
+ * 付け、writer 側の汎用ナビゲータと一致するパスを作る。
+ * w:p には降りない（段落は入れ子にならない）。脚注の separator/continuationSeparator
+ * （w:type 付き）は本文ではないので走査しない。
+ */
+function collectParagraphs(el: El, prefix: string, inTableCell: boolean, hits: ParaHit[]): void {
+  const counts = new Map<string, number>();
+  for (const c of childElements(el)) {
+    const tag = c.tagName;
+    const idx = (counts.get(tag) ?? 0) + 1;
+    counts.set(tag, idx);
+    const childPath = `${prefix}/${tag}[${idx}]`;
+    if (tag === 'w:p') {
+      hits.push({ p: c, path: childPath, inTableCell });
+      continue; // 段落内には w:p は無い
+    }
+    if ((tag === 'w:footnote' || tag === 'w:endnote') && c.getAttribute('w:type')) {
+      continue; // separator / continuationSeparator は本文でない
+    }
+    collectParagraphs(c, childPath, inTableCell || tag === 'w:tc', hits);
+  }
+}
+
+/**
+ * 段落内の**テキストを持つラン**を読み順で収集（再帰）。
+ * w:hyperlink / w:ins / w:smartTag / w:sdt 内の run も連結対象＝文が分断されない。
+ * w:del（削除済みテキスト）配下は対象外。run は入れ子にならないので降りない。
+ */
+function collectRunEls(p: El): El[] {
+  const out: El[] = [];
+  const walk = (el: El): void => {
+    for (const c of childElements(el)) {
+      if (c.tagName === 'w:del') continue; // 削除済みテキストは翻訳対象外
+      if (c.tagName === 'w:r') {
+        out.push(c);
+        continue;
+      }
+      walk(c);
+    }
+  };
+  walk(p);
+  return out;
+}
+
 function paragraphHasField(p: El): boolean {
   return p.getElementsByTagName('w:fldChar').length > 0;
 }
@@ -161,10 +217,15 @@ export async function docxToDtir(
     .filter((p) => /^word\/footer\d*\.xml$/.test(p))
     .sort();
 
+  const hasFootnotes = !!zip.file('word/footnotes.xml');
+  const hasEndnotes = !!zip.file('word/endnotes.xml');
+
   const specs: PartSpec[] = [
-    { part: 'word/document.xml', container: 'w:body', baseRole: null },
-    ...headerParts.map((p): PartSpec => ({ part: p, container: 'w:hdr', baseRole: 'header' })),
-    ...footerParts.map((p): PartSpec => ({ part: p, container: 'w:ftr', baseRole: 'footer' })),
+    { part: 'word/document.xml', baseRole: null },
+    ...headerParts.map((p): PartSpec => ({ part: p, baseRole: 'header' })),
+    ...footerParts.map((p): PartSpec => ({ part: p, baseRole: 'footer' })),
+    ...(hasFootnotes ? [{ part: 'word/footnotes.xml', baseRole: 'footnote' } as PartSpec] : []),
+    ...(hasEndnotes ? [{ part: 'word/endnotes.xml', baseRole: 'endnote' } as PartSpec] : []),
   ];
 
   const segments: IRSegment[] = [];
@@ -174,26 +235,28 @@ export async function docxToDtir(
     const xml = await read(spec.part);
     if (!xml) continue;
     const doc = new DOMParser().parseFromString(xml, 'text/xml');
-    const containerEl = doc.getElementsByTagName(spec.container).item(0);
-    if (!containerEl) continue;
-    const paragraphs = childElements(containerEl as unknown as El).filter(
-      (e) => e.tagName === 'w:p',
-    );
+    const root = doc.documentElement as unknown as El | null;
+    if (!root) continue;
+    const hits: ParaHit[] = [];
+    collectParagraphs(root, '', false, hits);
 
-    paragraphs.forEach((p, idx) => {
-      const path = `/${spec.container}/w:p[${idx + 1}]`;
+    hits.forEach((hit) => {
+      const p = hit.p;
+      const path = hit.path;
       const id = deriveId(spec.part, path);
 
       const isField = paragraphHasField(p);
-      const runEls = childElements(p).filter((e) => e.tagName === 'w:r');
+      const runEls = collectRunEls(p);
       const runs = runEls.map(extractRun).filter((r) => r.text.length > 0);
       const source = runs.map((r) => r.text).join('');
       const preserve = runs.some((r) => r.preserve);
 
-      // role 決定
+      // role 決定（part 既定 > 表セル > TOC > 見出し > body）
       let role: SegmentRole;
       if (spec.baseRole) {
         role = spec.baseRole;
+      } else if (hit.inTableCell) {
+        role = 'table-cell';
       } else if (isField && /\bTOC\b/i.test(paragraphInstrText(p))) {
         role = 'toc';
       } else if ((paragraphStyle(p) ?? '').startsWith('Heading')) {

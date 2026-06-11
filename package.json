@@ -24,6 +24,7 @@
     "clean": "rm -rf dist",
     "test": "vitest run",
     "test:fixture": "tsx test/run-fixture.ts",
+    "test:torture": "tsx test/torture-coverage.ts",
     "typecheck": "tsc --noEmit"
   },
   "engines": {
