@@ -1,3 +1,5 @@
+**日本語** | [English](./README.en.md)
+
 # @shuji-bonji/dtir-ooxml-reader-mcp
 
 `.docx`（WordprocessingML）を **DTIR セグメント表**に変換する MCP サーバ。
