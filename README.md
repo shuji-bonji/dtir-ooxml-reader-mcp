@@ -36,6 +36,53 @@ flowchart LR
 > tinyld 採用理由: franc は短文で誤判定（独語文を仏語に誤る）が多く、フィクスチャの
 > `body-de-notag`（タグ欠落の独語段落）で破綻したため。tinyld は ISO 639-1 ＋ accuracy を返す。
 
+## confidence の意味
+
+`language` は `{ value, confidence, source }` の3点セット。**`confidence` は単独の数値ではなく
+`value`（その言語）への確信度**（0–1）であり、必ず `source`（出所）とセットで読む。
+
+| 状況 | value | confidence | source |
+|---|---|---|---|
+| 明示タグ `<w:lang>` あり | タグの言語 | **0.95**（固定・強い証拠） | tag |
+| タグ無し → tinyld 検出成功（accuracy ≥ 0.2 かつ既知言語） | 検出言語 | **tinyld の accuracy**（可変・約0.2〜1.0） | detect |
+| 検出不発 → コンテナ既定 | 既定言語 | **0.3**（固定・弱い証拠＝継承） | default |
+| 既定も無い／検出不能 | **null** | **0** | default |
+| field / numeric / empty（翻訳対象外） | **null** | **0** | — |
+
+読み方の要点:
+
+- **固定値は「証拠の種類」が信頼度を決めるため**。タグ＝人/ツールの明示宣言なので高(0.95)、継承＝弱い手掛かりなので低(0.3)。**accuracy をそのまま反映する可変値は検出(detect)経路のみ**。
+- **`value=null` のとき `confidence=0` は正しい**。confidence は「value への確信度」なので、言語を主張していない（null）なら確信対象が無く 0 になる。**「0＝言語情報が信用できない」ではなく「0＝そもそも言語を主張していない」**と読む。
+- 下流は **`translatable` と `value` を先に見る**こと。`translatable=false`（field/numeric/empty）は言語を使わずスキップするので、その `confidence=0` を「不確実な言語」と解釈してはならない。
+- **既知の改善余地**: 検出が不採用（accuracy < 0.2、または8言語マップ外）のとき、tinyld の候補分布 `candidates` を保持せず捨てている。これは `confidence`/`value` の意味論とは別問題で、将来の言語解決ステージ向けに候補を残す余地がある（現状 `confidence`/`candidates` を読む下流ステージは未実装）。
+
+## 保証すること / 保証しないこと
+
+### 保証する
+
+- **ロスレス（非破壊）**: 抽出するのは `<w:t>` のテキストのみ。書式(rPr)・画像(DrawingML)・`sectPr`・
+  フィールド命令は IR に乗せず `anchor.ref` に隠すため、**reader 由来で文書が壊れることはない**。
+- **id の決定性**: 同一入力なら再実行しても各セグメントの `id` は不変（`anchor` の part＋構造パスから導出）。
+  段落が増減しても既存 id がズレないので、増分翻訳・キャッシュが成立する。
+- **構造網羅（再帰走査）**: `document.xml` / `header*` / `footer*` / `footnotes.xml` / `endnotes.xml` を走査し、
+  表(`w:tbl/w:tr/w:tc`)・SDT・テキストボックス内の段落まで再帰収集。ハイパーリンク・追跡変更(`w:ins`)内の
+  ランも連結して**文を分断しない**（`w:del` は除外）。→ torture フィクスチャで 0 漏れを常設テスト。
+- **契約適合**: 出力は `doc-translation-ir` の **JSON Schema（構造）と validate-dtir（意味整合）の両方**を満たす。
+- **fail-safe な分類**: 翻訳対象外（field/numeric/empty）は `translatable=false` で明示し writer は一切触らない。
+  未対応領域は「原語のまま残る」安全側に倒れ、レイアウト崩壊や誤訳混入を起こさない。
+
+### 保証しない
+
+- **翻訳しない**: 言語解決のヒントを付すだけ。翻訳・品質評価は後段の責務。
+- **言語の正しさを保証しない**: tinyld は確率的判定で、短文や近縁言語では誤りうる。だからこそ値を断定せず
+  `{ value, confidence, source, candidates }` で**不確実性を明示して**下流に委ねる設計。
+- **段落内の言語切替を分離しない**: `language` はセグメント単位。1つの `<w:p>` 内で蘭→仏のように
+  切り替わっても1言語に丸める（v0.2 で `runs` ＋ ラン別 `language` を想定）。
+- **8言語マップ外を解決しない**: BCP47 マップは PoC 範囲（nl / fr / de / en / ja / es / it / pt）。
+  範囲外の言語はコンテナ既定または `null` にフォールバックする。
+- **段内インライン書式を保持しない（既定 collapse）**: 太字・色などの復元は tag-aware writer（v0.2 以降）まで保留。
+  `text.runs` のオフセットは前方互換で記録済み。
+
 ## 使い方
 
 MCP tool `docx_to_dtir`:
