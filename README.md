@@ -54,7 +54,11 @@ flowchart LR
 - **固定値は「証拠の種類」が信頼度を決めるため**。タグ＝人/ツールの明示宣言なので高(0.95)、継承＝弱い手掛かりなので低(0.3)。**accuracy をそのまま反映する可変値は検出(detect)経路のみ**。
 - **`value=null` のとき `confidence=0` は正しい**。confidence は「value への確信度」なので、言語を主張していない（null）なら確信対象が無く 0 になる。**「0＝言語情報が信用できない」ではなく「0＝そもそも言語を主張していない」**と読む。
 - 下流は **`translatable` と `value` を先に見る**こと。`translatable=false`（field/numeric/empty）は言語を使わずスキップするので、その `confidence=0` を「不確実な言語」と解釈してはならない。
-- **既知の改善余地**: 検出が不採用（accuracy < 0.2、または8言語マップ外）のとき、tinyld の候補分布 `candidates` を保持せず捨てている。これは `confidence`/`value` の意味論とは別問題で、将来の言語解決ステージ向けに候補を残す余地がある（現状 `confidence`/`candidates` を読む下流ステージは未実装）。
+- **候補分布 `candidates` の保持**: 検出が不採用（accuracy < 0.2、または8言語マップ外）でコンテナ既定や
+  `null` にフォールバックする場合でも、tinyld の候補分布（上位3件）を `candidates` に残す。
+  `value`/`confidence`/`source` の意味論は変えず（既定⇒0.3, null⇒0）、**検出器の見立てだけを下流へ渡す**。
+  完全に検出不能（`detectAll` が空）なら `candidates` は付けない＝「すべて失敗」は空のまま。
+  なお現状 `confidence`/`candidates` を読む下流ステージは未実装で、これは将来の言語解決ステージ向けの信号保全。
 
 ## 保証すること / 保証しないこと
 

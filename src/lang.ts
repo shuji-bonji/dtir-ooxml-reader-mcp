@@ -86,25 +86,30 @@ export function resolveLanguage(input: ResolveInput): SegmentLanguage {
     return { value, confidence: 0.95, source: 'tag', candidates };
   }
 
-  // 2. ローカル判定（tinyld）
+  // 2. ローカル判定（tinyld）— 採否に関わらず候補分布は計算しておき、
+  //    フォールバック時も下流（言語解決ステージ）へ残す（捨てない）。
   const ranked = detectAll(source);
+  const detectCandidates: LanguageCandidate[] = ranked
+    .slice(0, 3)
+    .map((r) => ({ value: toBcp47(r.lang) ?? r.lang, confidence: Number(r.accuracy.toFixed(2)) }));
   const top = ranked[0];
   if (top && top.accuracy >= DETECT_THRESHOLD) {
     const mapped = toBcp47(top.lang);
     if (mapped) {
       const confidence = Number(top.accuracy.toFixed(2));
-      const candidates: LanguageCandidate[] = ranked
-        .slice(0, 3)
-        .map((r) => ({ value: toBcp47(r.lang) ?? r.lang, confidence: Number(r.accuracy.toFixed(2)) }));
-      return { value: mapped, confidence, source: 'detect', candidates };
+      return { value: mapped, confidence, source: 'detect', candidates: detectCandidates };
     }
+    // 閾値は超えたが 8言語マップ外。value は確定できないが、検出シグナルは下記で残す。
   }
 
-  // 3. 既定にフォールバック
+  // 3. 既定にフォールバック。value/confidence/source は不変のまま、
+  //    検出候補があれば添える（閾値未満・マップ外でも下流が分布を見られる）。
+  const withCandidates = detectCandidates.length > 0 ? { candidates: detectCandidates } : {};
   if (containerDefault) {
-    return { value: containerDefault, confidence: 0.3, source: 'default' };
+    return { value: containerDefault, confidence: 0.3, source: 'default', ...withCandidates };
   }
-  return { value: null, confidence: 0, source: 'default' };
+  // 完全に検出不能（ranked 空）なら candidates は付けない＝「すべて失敗」は妥当に空。
+  return { value: null, confidence: 0, source: 'default', ...withCandidates };
 }
 
 function mostCommon(arr: string[]): string {
